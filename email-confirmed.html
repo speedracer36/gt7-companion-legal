@@ -3,20 +3,137 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Email confirmed — GT7 Tuning Garage</title>
 <link rel="stylesheet" href="style.css">
+<style>
+  form { display: grid; gap: 0.9rem; max-width: 22rem; margin: 1.25rem 0; }
+  label { display: grid; gap: 0.3rem; font-size: 0.9rem; }
+  input[type=password] { font: inherit; padding: 0.6rem 0.7rem; border: 1px solid #767676; border-radius: 8px; background: transparent; color: inherit; }
+  button { font: inherit; font-weight: 600; padding: 0.7rem 1rem; border: 0; border-radius: 8px; background: #0060df; color: #fff; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .msg { min-height: 1.4em; }
+  .msg.error { color: #c0392b; }
+</style>
 </head>
 <body>
 <nav><a href="index.html">Home</a><a href="support.html">Support</a></nav>
+
+<!-- Sign-up confirmation (the default) -->
+<section id="confirmed">
 <h1>Email confirmed</h1>
 <p class="meta">GT7 Tuning Garage</p>
-
 <p>Your email address is confirmed and your account is ready.</p>
-
 <h2>What to do next</h2>
 <p>Go back to the GT7 Tuning Garage app and sign in with the email and password you just created. You can close this page.</p>
 <p><a href="gt7garage://">Open the app</a> (works if the app is installed on this device).</p>
-
 <p>If you didn't create this account, you can ignore this page — no further action is needed. Questions? See <a href="support.html">Support</a>.</p>
+</section>
+
+<!-- Password reset (shown only for a reset link) -->
+<section id="reset" hidden>
+<h1>Choose a new password</h1>
+<p class="meta">GT7 Tuning Garage</p>
+<form id="reset-form" autocomplete="off">
+  <label>New password
+    <input type="password" id="pw1" minlength="6" required autocomplete="new-password">
+  </label>
+  <label>Confirm new password
+    <input type="password" id="pw2" minlength="6" required autocomplete="new-password">
+  </label>
+  <button type="submit" id="reset-btn">Update password</button>
+  <p class="msg" id="reset-msg" role="status"></p>
+</form>
+</section>
+
+<section id="done" hidden>
+<h1>Password updated</h1>
+<p class="meta">GT7 Tuning Garage</p>
+<p>Your password has been changed. Go back to the app and sign in with your new password. You can close this page.</p>
+</section>
+
+<section id="expired" hidden>
+<h1>This link has expired</h1>
+<p class="meta">GT7 Tuning Garage</p>
+<p>The link is invalid or has already been used. Open the app and tap <strong>Forgot Password</strong> to get a new one. Questions? See <a href="support.html">Support</a>.</p>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js"
+        integrity="sha384-qafw21c/iciq0VXsi9FzkfoQv5I/V0iqE4lSNcKXPnW9/UTJLnv5CcN4FHxVLnKg"
+        crossorigin="anonymous"></script>
+<script>
+(function () {
+  // The project URL and anon key are public by design (they ship inside the app).
+  var SUPABASE_URL = 'https://bnuxqjmqkwyuvpbhuett.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJudXhxam1xa3d5dXZwYmh1ZXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjYzNTEsImV4cCI6MjA5ODUwMjM1MX0.DEhauXwStq8TMX8UvRdWACDjL5Dj2ZvGKfulcVdgzaY';
+
+  var hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  var query = new URLSearchParams(window.location.search);
+  var type = hash.get('type');
+  var accessToken = hash.get('access_token');
+  var refreshToken = hash.get('refresh_token');
+  var failed = hash.get('error') || hash.get('error_code') || query.get('error');
+
+  // Take the tokens out of the address bar and browser history straight away.
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState(null, '', window.location.pathname);
+  }
+
+  function show(id) {
+    ['confirmed', 'reset', 'done', 'expired'].forEach(function (s) {
+      document.getElementById(s).hidden = s !== id;
+    });
+    if (id === 'reset') document.title = 'Choose a new password \u2014 GT7 Tuning Garage';
+    if (id === 'done') document.title = 'Password updated \u2014 GT7 Tuning Garage';
+    if (id === 'expired') document.title = 'Link expired \u2014 GT7 Tuning Garage';
+  }
+
+  if (failed) { show('expired'); return; }
+  if (type !== 'recovery') { show('confirmed'); return; }
+  if (!accessToken || !refreshToken || !window.supabase) { show('expired'); return; }
+
+  show('reset');
+  var form = document.getElementById('reset-form');
+  var btn = document.getElementById('reset-btn');
+  var msg = document.getElementById('reset-msg');
+
+  function fail(text) {
+    msg.className = 'msg error';
+    msg.textContent = text;
+    btn.disabled = false;
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pw1 = document.getElementById('pw1').value;
+    var pw2 = document.getElementById('pw2').value;
+    msg.className = 'msg';
+    msg.textContent = '';
+    if (pw1.length < 6) return fail('Use at least 6 characters.');
+    if (pw1 !== pw2) return fail('The two passwords do not match.');
+    btn.disabled = true;
+    msg.textContent = 'Updating\u2026';
+
+    var client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+      .then(function (r) {
+        if (r.error) throw r.error;
+        return client.auth.updateUser({ password: pw1 });
+      })
+      .then(function (r) {
+        if (r.error) throw r.error;
+        show('done');
+        return client.auth.signOut();
+      })
+      .catch(function (err) {
+        var text = err && err.message ? err.message : 'Something went wrong.';
+        if (/expired|invalid|session/i.test(text)) { show('expired'); return; }
+        fail(text);
+      });
+  });
+})();
+</script>
 </body>
 </html>
